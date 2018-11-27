@@ -87,7 +87,8 @@ public:
     BRANCH_LETTERS_ACTION_ALL, ///< Branch on the letters (try all values)
     BRANCH_WORDS_CHB,          ///< Branch on the words
     BRANCH_LETTERS_CHB,        ///< Branch on the letters
-    BRANCH_LETTERS_CHB_ALL     ///< Branch on the letters (try all values)
+    BRANCH_LETTERS_CHB_ALL,    ///< Branch on the letters (try all values)
+    BRANCH_CBS_MAX_SD          ///< Use maximum solution density
   };
   /// Actual model
   Crossword(const SizeOptions& opt)
@@ -211,6 +212,10 @@ public:
              INT_VAR_AFC_SIZE_MAX(opt.decay()), INT_VAL_SPLIT_MIN(),
              nullptr, &printwords);
       break;
+    case BRANCH_CBS_MAX_SD:
+#ifdef GECODE_HAS_CBS
+      cbsbranch(*this, letters);
+#endif
     case BRANCH_LETTERS_AFC:
       // Branch by assigning letters
       branch(*this, letters,
@@ -352,6 +357,10 @@ main(int argc, char* argv[]) {
                 "letters-chb");
   opt.branching(Crossword::BRANCH_LETTERS_CHB_ALL,
                 "letters-chb-all");
+#ifdef GECODE_HAS_CBS
+  opt.branching(Crossword::BRANCH_CBS_MAX_SD,
+                "maxSD");
+#endif
   opt.parse(argc,argv);
   dict.init(opt.file());
   if (opt.size() >= n_grids) {
