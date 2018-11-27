@@ -533,6 +533,21 @@ namespace Gecode { namespace Int { namespace Extensional {
     return sizeof(*this);
   }
 
+#ifdef GECODE_HAS_CBS
+  template<class View, class Table>
+  void
+  PosCompact<View,Table>::solndistrib(Space& home,
+                                      Propagator::SendMarginal send) const {
+  }
+
+  template<class View, class Table>
+  void
+  PosCompact<View,Table>::domainsizesum(Propagator::InDecision in,
+                                        unsigned int& size,
+                                        unsigned int& size_b) const {
+  }
+#endif
+
   template<class View, class Table>
   void
   PosCompact<View,Table>::reschedule(Space& home) {

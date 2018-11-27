@@ -557,6 +557,13 @@ namespace Gecode { namespace Int { namespace Extensional {
     /// Constructor for posting
     PosCompact(Home home, ViewArray<View>& x, const TupleSet& ts);
   public:
+#ifdef GECODE_HAS_CBS
+    /// Solution distribution computation for branching
+    virtual void solndistrib(Space& home, Propagator::SendMarginal send) const;
+    /// Sum of variables cardinalities
+    virtual void domainsizesum(Propagator::InDecision in,
+                               unsigned int& size, unsigned int& size_b) const;
+#endif
     /// Schedule function
     virtual void reschedule(Space& home);
     /// Perform propagation
