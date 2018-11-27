@@ -545,6 +545,9 @@ namespace Gecode { namespace Int { namespace Extensional {
   PosCompact<View,Table>::domainsizesum(Propagator::InDecision in,
                                         unsigned int& size,
                                         unsigned int& size_b) const {
+    std::cout << "domainsizesum" << std::endl;
+    size = 0;
+    size_b = 0;
   }
 #endif
 
