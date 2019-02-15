@@ -576,7 +576,21 @@ namespace Gecode { namespace Int { namespace Extensional {
     size_t dispose(Space& home);
     /// Give advice to propagator
     virtual ExecStatus advise(Space& home, Advisor& a, const Delta& d);
+  private:
+#ifdef GECODE_HAS_CBS
+    /// Views on which to perform bounds-propagation
+    ViewArray<View> x;
+#endif
   };
+
+#ifdef GECODE_HAS_CBS
+  template<class View> 
+  void cbscompact(Space& home, unsigned int prop_id, const ViewArray<View>& x, Propagator::SendMarginal send);
+
+  template<class View>
+  void cbssize(const ViewArray<View>& x, Propagator::InDecision in,
+               unsigned int& size, unsigned int& size_b);
+#endif
 
   /// Post function for positive compact table propagator
   template<class View>
