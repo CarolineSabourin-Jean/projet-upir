@@ -449,7 +449,7 @@ namespace Gecode { namespace Int { namespace Extensional {
   PosCompact<View,Table>::Status::propagating(void) {
     s = PROPAGATING;
   }
-  
+
   /*
    * The propagator proper
    *
@@ -511,12 +511,12 @@ namespace Gecode { namespace Int { namespace Extensional {
 
   template<class View, class Table>
   forceinline
-  PosCompact<View,Table>::PosCompact(Home home, ViewArray<View>& x0,
+  PosCompact<View,Table>::PosCompact(Home home, ViewArray<View>& x,
                                      const TupleSet& ts)
-    : Compact<View,true>(home,ts), x(x0), status(MULTIPLE), table(home,ts.words()) {
-    setup(home,table,x0);
+    : Compact<View,true>(home,ts), status(MULTIPLE), table(home,ts.words()) {
+    setup(home,table,x);
   }
-      
+
   template<class View, class Table>
   forceinline ExecStatus
   PosCompact<View,Table>::post(Home home, ViewArray<View>& x,
@@ -534,99 +534,72 @@ namespace Gecode { namespace Int { namespace Extensional {
   }
 
 #ifdef GECODE_HAS_CBS
-  // Peut-être que la solution ressemblerait à ceci, 
-  // avec beaucoup d'ajouts afin que ça ressemble à la méthode suivante
-  // (tiré de la méthode propagate).
-  // template<class View>
-  // void 
-  // cbscompact(Space&, unsigned int prop_id, const ViewArray<View>& x,
-  //                  Propagator::SendMarginal send) {
-  //
-  //   for (Advisors<CTAdvisor> as(c); as(); ++as) {
-  //     CTAdvisor& a = as.advisor();
-  //     View x = a.view();
-      
-  //     for (ValidSupports vs(*this,a); vs(); ++vs) {
-  //       unsigned long long int cbs_supports = table.ones(vs.supports());
-  //     }
-  //   }
-  // }
-
-  // Il y a beaucoup d'erreurs du style "ValidSupports" n'a pas été déclaré dans cette portée.
-  template<class View>
-  void 
-  cbscompact(Space&, unsigned int prop_id, const ViewArray<View>& x,
-                   Propagator::SendMarginal send) {
-
-    int minVal = std::numeric_limits<int>::max();
-    int maxVal = std::numeric_limits<int>::min();
-    for (const auto& v : x) {
-      if (v.assigned()) continue;
-      minVal = std::min(v.min(), minVal);
-      maxVal = std::max(v.max(), maxVal);
-    }
-
-    Region r;
-    unsigned long long int* solCounts = r.alloc<unsigned long long int>(maxVal - minVal + 1);
-
-    for (const auto& v : x) {
-      if (v.assigned()) continue;
-
-      // Normalization constant for keeping densities values between 0 and 1
-      double normalization = 0;
-
-      int index = 0;
-
-      // Ici, vs n'est pas défini (je crois) pour le type View comme 2e paramètre.
-      // C'est pourquoi j'ai essayé le première méthode qui est en commentaire actuellement,
-      // mais ça ne fonctionne pas non plus.
-      // Il se peut aussi que ce qui est en lien avec les variables index 
-      // ne fonctionne pas, c'est à tester de mon côté, mais je ne peux pas pour 
-      // l'instant vu que le code ne compile pas.
-      for (ValidSupports vs(*this, v); vs(); ++vs) {
-        unsigned long long int cbsSupports = table.ones(vs.supports());
-        solCounts[index] = cbsSupports;
-        normalization += cbsSupports;
-        ++index;
-      }
-      // Because we approximate the permanent of each value for the variable, we
-      // assign densities in a separate loop where we normalize solution densities.
-      index = 0;
-      for (ViewValues<View> val(v); val(); ++val) {
-        send(prop_id,
-             v.id(),
-             v.baseval(val.val()),
-             solCounts[index] / normalization);
-        ++index;
-      }
-    } 
-
-    r.free();       
-  }
-
-  template<class View>
-  void cbssize(const ViewArray<View>& x, Propagator::InDecision in,
-               unsigned int& size, unsigned int& size_b) {
-    size = 0;
-    size_b = 0;
-    for (const auto& v : x) {
-      if (!v.assigned()) {
-        size += v.size();
-        // Il y a un seg fault si ces deux lignes sont exécutées.
-        // if (in(v.id()))
-        //   size_b += v.size();
-      }
-    }
-    // Pas bon, mais seulement pour que la fonction solndistrib soit appelée.
-    size_b = size;
-  }
-  
   template<class View, class Table>
   void
   PosCompact<View,Table>::solndistrib(Space& home,
                                       Propagator::SendMarginal send) const {
+    int minVal = std::numeric_limits<int>::max();
+    int maxVal = std::numeric_limits<int>::min();
 
-    cbscompact(home,this->id(),x,send);
+    // Je trouve ça étrange, mais il semble que les variables que tu cherches
+    // soit seulement disponible dans les advisors. Je n'avais pas encore vu ça.
+    for (Advisors<CTAdvisor> as(c); as(); ++as) {
+      CTAdvisor& a = as.advisor();
+      View       x = a.view();
+
+      minVal = std::min(x.min(), minVal);
+      maxVal = std::max(x.max(), maxVal);
+    }
+
+    Region r;
+
+    // solCounts est une structure qu'on réutilise pour chaque variable afin de
+    // faire la normalisation. C'est la raison pour laquelle on alloue de l'espace
+    // pour toutes les valeurs qu'on pourrait possiblement rencontrer dans
+    // toutes les variables. On pourrait très bien, par exemple, utiliser un
+    // hash map à l'intérieur du loop des advisors afin de se "souvenir" du
+    // nombre de solution pour chaque valeur.
+    unsigned long long int* solCounts = r.alloc<unsigned long long int>(maxVal - minVal + 1);
+
+    for (Advisors<CTAdvisor> as(c); as(); ++as) {
+      CTAdvisor& a = as.advisor();
+      View       x = a.view();
+
+      if (x.assigned()) continue;
+
+      // Normalization constant for keeping densities values between 0 and 1
+      double normalization = 0;
+
+      for (ValidSupports vs(*this,a); vs(); ++vs) {
+        // J'imagine qu'il y a un support pour chaque valeur de la variable du
+        // advisor. Je présume aussi que ces supports sont compris entre la
+        // valeur minimale et maximale de la vue (sinon il y a quelque chose que
+        // je ne comprend pas.) Si je comprends bien, le assert suivant ne
+        // devrait jamais sortir:
+        assert(vs.val() >= minVal);
+        assert(vs.val() <= maxVal);
+
+        unsigned long long int cbsSupports = table.ones(vs.supports());
+        // Ici, je présume que le support te donne le nombre de solution pour
+        // une seule valeur. Donc il faut indexer solCounts avec la bonne
+        // valeur, afin de la récupérer plus bas. Il faut aussi bien sûr
+        // soustraire la valeur minimum pour avoir la bonne case dans le
+        // tableau.
+        solCounts[vs.val() - minVal]  = cbsSupports;
+        normalization                += cbsSupports;
+      }
+
+      // Because we approximate the permanent of each value for the variable, we
+      // assign densities in a separate loop where we normalize solution densities.
+      for (ValidSupports vs(*this,a); vs(); ++vs) {
+          send(this->id(),
+               x.id(),
+               x.baseval(vs.val()),
+               solCounts[vs.val() - minVal] / normalization);
+      }
+    }
+
+    r.free();
   }
 
   template<class View, class Table>
@@ -634,8 +607,24 @@ namespace Gecode { namespace Int { namespace Extensional {
   PosCompact<View,Table>::domainsizesum(Propagator::InDecision in,
                                         unsigned int& size,
                                         unsigned int& size_b) const {
+    size   = 0;
+    size_b = 0;
 
-    cbssize(x,in,size,size_b);
+    // Comme j'ai dit plus haut, je pense que les variables que tu cherches sont
+    // encapsulé dans les advisors.
+    for (Advisors<CTAdvisor> as(c); as(); ++as) {
+      CTAdvisor& a = as.advisor();
+      View       x = a.view();
+
+      if (!x.assigned()) {
+        size += x.size();
+        if (in(x.id()))
+          size_b += x.size();
+        }
+    }
+
+    // Pas bon, mais seulement pour que la fonction solndistrib soit appelée.
+    // size_b = size;
   }
 #endif
 
