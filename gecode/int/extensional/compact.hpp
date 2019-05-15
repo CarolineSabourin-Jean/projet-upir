@@ -535,9 +535,53 @@ namespace Gecode { namespace Int { namespace Extensional {
 
 #ifdef GECODE_HAS_CBS
   template<class View, class Table>
-  void
+  void 
   PosCompact<View,Table>::solndistrib(Space& home,
                                       Propagator::SendMarginal send) const {
+
+    int minVal = std::numeric_limits<int>::max();
+    int maxVal = std::numeric_limits<int>::min();
+
+    for (Advisors<CTAdvisor> as(c); as(); ++as) {
+      CTAdvisor& a = as.advisor();
+      View x = a.view();
+
+      minVal = std::min(x.min(), minVal);
+      maxVal = std::max(x.max(), maxVal);
+    }
+
+    Region r;
+    unsigned long long int* solCounts = r.alloc<unsigned long long int>(maxVal - minVal + 1);
+
+    for (Advisors<CTAdvisor> as(c); as(); ++as) {
+      CTAdvisor& a = as.advisor();
+      View x = a.view();
+
+      if (x.assigned()) continue;
+
+      // Normalization constant for keeping densities values between 0 and 1
+      double normalization = 0;
+
+      for (ValidSupports vs(*this, a); vs(); ++vs) {
+        assert(vs.val() >= minVal);
+        assert(vs.val() <= maxVal);
+
+        unsigned long long int cbsSupports = table.ones(vs.supports());
+        solCounts[vs.val() - minVal] = cbsSupports;
+        normalization += cbsSupports;
+      }
+
+      // Because we approximate the permanent of each value for the variable, we
+      // assign densities in a separate loop where we normalize solution densities.
+      for (ValidSupports vs(*this, a); vs(); ++vs) {
+          send(this->id(),
+               x.id(),
+               x.baseval(vs.val()),
+               solCounts[vs.val() - minVal] / normalization);
+      }
+    } 
+
+    r.free();
   }
 
   template<class View, class Table>
@@ -545,6 +589,19 @@ namespace Gecode { namespace Int { namespace Extensional {
   PosCompact<View,Table>::domainsizesum(Propagator::InDecision in,
                                         unsigned int& size,
                                         unsigned int& size_b) const {
+    size   = 0;
+    size_b = 0;
+
+    for (Advisors<CTAdvisor> as(c); as(); ++as) {
+      CTAdvisor& a = as.advisor();
+      View x = a.view();
+
+      if (!x.assigned()) {
+        size += x.size();
+        if (in(x.id()))
+          size_b += x.size();
+      }
+    }
   }
 #endif
 

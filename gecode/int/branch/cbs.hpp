@@ -147,6 +147,8 @@ namespace Gecode { namespace Int { namespace Branch {
     // Lambda we pass to propagators via solndistrib to query solution densities
     auto SendMarginal = [this](unsigned int prop_id, unsigned int var_id,
                                int val, double dens) {
+        if (!varIdToPos.isIn(var_id)) return;
+        
         if (logProp[prop_id].dens < dens) {
           logProp[prop_id].var_id = var_id;
           logProp[prop_id].val = val;
@@ -156,6 +158,11 @@ namespace Gecode { namespace Int { namespace Branch {
 
     for (auto& kv : logProp)
       kv.second.visited = false;
+
+    // We can change rho's value. Actually, there is no memory exception
+    // with rho = 1. But with other values of rho, there is a memory 
+    // exception for some crossword problems.
+    float rho = 1;
 
     for (Propagators p(home, PropagatorGroup::all); p(); ++p) {
       unsigned int prop_id = p.propagator().id();
@@ -181,7 +188,7 @@ namespace Gecode { namespace Int { namespace Branch {
       // If the domain size sum of all variables in the propagator has changed
       // since the last time we called this function, we need to recompute
       // solution densities. Otherwise, we can reuse them.
-      if (logProp[prop_id].domsum != domsum) {
+      if (domsum < rho * logProp[prop_id].domsum || logProp[prop_id].domsum == 0) {
         logProp[prop_id].dens = -1;
         // Solution density computation
         p.propagator().solndistrib(home, SendMarginal);
